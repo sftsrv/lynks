@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
+	"github.com/sahilm/fuzzy"
 	"github.com/sftsrv/lynks/theme"
 )
 
@@ -25,19 +26,9 @@ func New() Model {
 }
 
 func (m Model) Items(items []string) Model {
-	debugItems := []string{}
-
-	for i, item := range items {
-		debugItems = append(debugItems, fmt.Sprintf("%d %s", i+1, item))
-	}
-
-	m.items = debugItems
-	m.filtered = debugItems
+	m.items = items
+	m.filtered = items
 	return m
-
-	// m.items = items
-	// m.filtered = items
-	// return m
 }
 
 func (m Model) Title(title string) Model {
@@ -80,14 +71,14 @@ func (m Model) View() string {
 // Gets the cursor position in a relative window with one item padding if possible.
 // Prefers to keep cursor at the top
 func (m Model) cursorWindow() (int, []string) {
-	itemCount := len(m.items)
+	itemCount := len(m.filtered)
 
 	if m.cursor < 2 {
-		return m.cursor, m.items[0:min(m.count, itemCount)]
+		return m.cursor, m.filtered[0:min(m.count, itemCount)]
 	}
 
 	if m.cursor > itemCount-1 {
-		items := m.items[max(0, itemCount-m.count):itemCount]
+		items := m.filtered[max(0, itemCount-m.count):itemCount]
 		lastItem := len(items) - 1
 		return lastItem, items
 	}
@@ -98,40 +89,61 @@ func (m Model) cursorWindow() (int, []string) {
 
 }
 
+func (m Model) applyFilter() Model {
+	if m.search == "" {
+		m.filtered = m.items
+		return m
+	}
+
+	matches := fuzzy.Find(m.search, m.items)
+
+	m.filtered = []string{}
+	for _, match := range matches {
+		m.filtered = append(m.filtered, m.items[match.Index])
+	}
+
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	maxIndex := max(len(m.filtered)-1, 0)
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		str := msg.String()
-		switch str {
-		case "left", "h":
-			m.cursor = 0
-		case "right", "l":
-			m.cursor = maxIndex
+		if m.searching {
+			switch str {
 
-		case "up", "k":
-			m.cursor = clamp(m.cursor-1, 0, maxIndex)
+			case "esc":
+				m.searching = false
 
-		case "down", "j":
-			m.cursor = clamp(m.cursor+1, 0, maxIndex)
+			case "backspace":
+				if m.search != "" {
+					m.search = m.search[0 : len(m.search)-1]
+					m = m.applyFilter()
+				}
 
-		case "esc":
-			m.searching = false
-
-		case "/":
-			m.searching = true
-
-		case "backspace":
-			if m.search != "" {
-				m.search = m.search[0 : len(m.search)-1]
+			default:
+				if len(str) == 1 {
+					m.search += str
+					m = m.applyFilter()
+				}
 			}
+		} else {
+			switch str {
+			case "left", "h":
+				m.cursor = 0
+			case "right", "l":
+				m.cursor = maxIndex
 
-		default:
-			if len(str) == 1 {
-				m.search += str
-				// filter items based on search here
-				m.filtered = m.items
+			case "up", "k":
+				m.cursor = clamp(m.cursor-1, 0, maxIndex)
+
+			case "down", "j":
+				m.cursor = clamp(m.cursor+1, 0, maxIndex)
+
+			case "/":
+				m.searching = true
 			}
 		}
 	}
