@@ -1,4 +1,4 @@
-module lynks
+module github.com/sftsrv/lynks
 
 go 1.24.5
 

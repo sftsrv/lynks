@@ -8,86 +8,70 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sftsrv/lynks/picker"
 )
 
-type filepicker struct {
-	search string
-	cursor int
-	files  []string
-}
-
-type selected struct {
-	path string
+type window struct {
+	width  int
+	height int
 }
 
 type model struct {
-	filepicker
-	selected
+	window
+	filepicker picker.Model
 }
 
 func (m model) Init() tea.Cmd {
 	return nil
 }
 
-func clamp(i int, min int, max int) int {
-	if i > max {
-		return max
-	}
-
-	if i < min {
-		return min
-	}
-
-	return i
+func (w *window) updateWindowSize(width int, height int) {
+	w.width = width
+	w.height = height
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	max := len(m.files) - 1
+	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.window.updateWindowSize(msg.Width, msg.Height)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
-		case "left", "h":
-			m.cursor = 0
-		case "right", "l":
-			m.cursor = max
-
-		case "up", "k":
-			m.cursor--
-			m.cursor = clamp(m.cursor, 0, max)
-		case "down", "j":
-			m.cursor++
-			m.cursor = clamp(m.cursor, 0, max)
 		}
-
 	}
 
-	return m, nil
+	m.filepicker, cmd = m.filepicker.Update(msg)
+
+	return m, cmd
 }
 
 func (m model) View() string {
+	return m.filepicker.View()
+}
 
-	var view strings.Builder
-	view.WriteString("Select a file")
-
-	for i, file := range m.files {
-		view.WriteString("\n")
-		if i == m.cursor {
-			view.WriteString("> ")
-		} else {
-			view.WriteString("  ")
-		}
-		view.WriteString(file)
+func initialModel(files []string) model {
+	return model{
+		filepicker: picker.New(files).Title("Select a filexx"),
 	}
-
-	view.WriteString("\n")
-
-	return view.String()
 }
 
 func main() {
+	files := getMarkdownFiles()
+
+	m := initialModel(files)
+
+	p := tea.NewProgram(m)
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func getMarkdownFiles() []string {
 	var files []string
 
 	filepath.WalkDir(".",
@@ -104,16 +88,5 @@ func main() {
 		},
 	)
 
-	m := model{
-		filepicker: filepicker{
-			search: "",
-			files:  files,
-		},
-	}
-
-	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
-	}
+	return files
 }
