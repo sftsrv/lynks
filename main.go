@@ -81,7 +81,7 @@ func getMarkdownFiles() []string {
 			}
 
 			if !d.IsDir() && strings.HasSuffix(s, ".md") {
-				files = append(files, s)
+				files = append(files, ""+s)
 			}
 
 			return nil

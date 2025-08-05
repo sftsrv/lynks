@@ -1,6 +1,8 @@
 package picker
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 	"github.com/sftsrv/lynks/theme"
@@ -9,19 +11,33 @@ import (
 type Model struct {
 	title     string
 	search    string
-	items     []string
-	filtered  []string
 	searching bool
 	cursor    int
+	count     int
+	items     []string
+	filtered  []string
 }
 
 func New() Model {
-	return Model{}
+	return Model{
+		count: 5,
+	}
 }
 
 func (m Model) Items(items []string) Model {
-	m.items = items
+	debugItems := []string{}
+
+	for i, item := range items {
+		debugItems = append(debugItems, fmt.Sprintf("%d %s", i+1, item))
+	}
+
+	m.items = debugItems
+	m.filtered = debugItems
 	return m
+
+	// m.items = items
+	// m.filtered = items
+	// return m
 }
 
 func (m Model) Title(title string) Model {
@@ -34,15 +50,52 @@ func (_ Model) Init() tea.Cmd {
 }
 
 func (m Model) View() string {
-	header := theme.Heading.Render(m.title) + theme.Faded.Render(" / to search")
+	header := theme.
+		Heading.
+		Render(fmt.Sprintf("%s (%d/%d)", m.title, m.cursor+1, len(m.filtered))) +
+		theme.Faded.Render(" / to search")
+
 	if m.searching {
 		header = theme.Heading.Render("Search") + " " + m.search + "_"
+	}
+
+	cursor, items := m.cursorWindow()
+	content := []string{}
+
+	for i, item := range items {
+		if i == cursor {
+			content = append(content, lg.NewStyle().Foreground(theme.Primary).Render(item))
+		} else {
+			content = append(content, item)
+		}
 	}
 
 	return lg.JoinVertical(
 		lg.Top,
 		header,
+		lg.JoinVertical(lg.Top, content...),
 	)
+}
+
+// Gets the cursor position in a relative window with one item padding if possible.
+// Prefers to keep cursor at the top
+func (m Model) cursorWindow() (int, []string) {
+	itemCount := len(m.items)
+
+	if m.cursor < 2 {
+		return m.cursor, m.items[0:min(m.count, itemCount)]
+	}
+
+	if m.cursor > itemCount-1 {
+		items := m.items[max(0, itemCount-m.count):itemCount]
+		lastItem := len(items) - 1
+		return lastItem, items
+	}
+
+	first := m.cursor - 1
+	last := min(m.cursor+m.count, itemCount)
+	return 1, m.filtered[first:last]
+
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -77,6 +130,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		default:
 			if len(str) == 1 {
 				m.search += str
+				// filter items based on search here
+				m.filtered = m.items
 			}
 		}
 	}
