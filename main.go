@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	lg "github.com/charmbracelet/lipgloss"
 	"github.com/sftsrv/lynks/picker"
+	"github.com/sftsrv/lynks/theme"
 )
 
 type window struct {
@@ -19,7 +21,6 @@ type window struct {
 type model struct {
 	window
 	filepicker picker.Model
-	selected   string
 }
 
 func (m model) Init() tea.Cmd {
@@ -37,12 +38,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.window.updateWindowSize(msg.Width, msg.Height)
+		m.filepicker = m.filepicker.Height(msg.Height)
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		}
+
 	}
 
 	m.filepicker, cmd = m.filepicker.Update(msg)
@@ -52,18 +55,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) pickerView() string {
 	return m.filepicker.View()
-	// fp := m.filepicker.Height(m.height)
-
-	// return fp.View()
 }
 
 func (m model) View() string {
-
-	if m.selected == "" {
+	selected := m.filepicker.GetSelected()
+	if selected == "" {
 		return m.pickerView()
 	}
 
-	return "Selected file is " + m.selected
+	return lg.JoinVertical(
+		lg.Top,
+		theme.Heading.Render("Selected file"),
+		theme.Primary.MarginLeft(1).Render(selected),
+	)
 
 }
 

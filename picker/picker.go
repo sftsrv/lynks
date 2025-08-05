@@ -15,6 +15,7 @@ type Model struct {
 	searching bool
 	cursor    int
 	count     int
+	selected  string
 	items     []string
 	filtered  []string
 }
@@ -42,6 +43,10 @@ func (m Model) Height(height int) Model {
 	return m.applyFilter()
 }
 
+func (m Model) GetSelected() string {
+	return m.selected
+}
+
 func (m Model) Title(title string) Model {
 	m.title = title
 	return m
@@ -49,6 +54,14 @@ func (m Model) Title(title string) Model {
 
 func (_ Model) Init() tea.Cmd {
 	return nil
+}
+
+func indicator(selected bool) string {
+	if !selected {
+		return theme.Faded.PaddingLeft(1).PaddingRight(1).Render("⦾ ")
+	}
+
+	return theme.Active.PaddingLeft(1).PaddingRight(1).Render("⦿ ")
 }
 
 func (m Model) View() string {
@@ -73,9 +86,9 @@ func (m Model) View() string {
 
 	for i, item := range items {
 		if i == cursor {
-			content = append(content, lg.NewStyle().Foreground(theme.Primary).Render(item))
+			content = append(content, indicator(true)+theme.Primary.Render(item))
 		} else {
-			content = append(content, item)
+			content = append(content, indicator(false)+item)
 		}
 	}
 
@@ -92,17 +105,17 @@ func (m Model) cursorWindow() (int, []string) {
 	itemCount := len(m.filtered)
 
 	if m.cursor < 2 {
-		return m.cursor, m.filtered[0:min(m.count+1, itemCount)]
+		return m.cursor, m.filtered[0:min(m.count, itemCount)]
 	}
 
 	if m.cursor > itemCount-1 {
-		items := m.filtered[max(0, itemCount-m.count):itemCount]
+		items := m.filtered[max(0, itemCount-m.count-1):itemCount]
 		lastItem := len(items) - 1
 		return lastItem, items
 	}
 
 	first := m.cursor - 1
-	last := min(m.cursor+m.count, itemCount)
+	last := min(m.cursor+m.count-1, itemCount)
 	return 1, m.filtered[first:last]
 
 }
@@ -137,6 +150,16 @@ func (m Model) cursorDown() Model {
 	maxIndex := max(len(m.filtered)-1, 0)
 	m.cursor = clamp(m.cursor+1, 0, maxIndex)
 
+	return m
+}
+
+func (m Model) setSelected() Model {
+	m.selected = m.filtered[m.cursor]
+	return m
+}
+
+func (m Model) clearSelected() Model {
+	m.selected = ""
 	return m
 }
 
@@ -182,6 +205,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 			case "down", "j":
 				m = m.cursorDown()
+
+			case " ", "enter":
+				m = m.setSelected()
+
+			case "esc":
+				m = m.clearSelected()
 
 			case "/":
 				m.searching = true
