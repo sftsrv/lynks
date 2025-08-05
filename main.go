@@ -21,6 +21,7 @@ type window struct {
 type model struct {
 	window
 	filepicker picker.Model
+	linkpicker picker.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -34,6 +35,7 @@ func (w *window) updateWindowSize(width int, height int) {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	selected := m.filepicker.GetSelected()
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -42,13 +44,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
-		}
 
+		case "esc":
+			if selected != "" {
+				m.filepicker = m.filepicker.ClearSelected()
+				return m, nil
+			}
+		}
 	}
 
-	m.filepicker, cmd = m.filepicker.Update(msg)
+	if selected == "" {
+		m.filepicker, cmd = m.filepicker.Update(msg)
+		return m, cmd
+	}
 
 	return m, cmd
 }
@@ -57,23 +67,28 @@ func (m model) pickerView() string {
 	return m.filepicker.View()
 }
 
+func (m model) fixLinksView() string {
+	selected := m.filepicker.GetSelected()
+	header := theme.Heading.Render("Selected file") + theme.Primary.MarginLeft(1).Render(selected)
+
+	return lg.JoinVertical(
+		lg.Top,
+		header,
+	)
+}
+
 func (m model) View() string {
 	selected := m.filepicker.GetSelected()
 	if selected == "" {
 		return m.pickerView()
 	}
 
-	return lg.JoinVertical(
-		lg.Top,
-		theme.Heading.Render("Selected file"),
-		theme.Primary.MarginLeft(1).Render(selected),
-	)
-
+	return m.fixLinksView()
 }
 
 func initialModel(files []string) model {
 	return model{
-		filepicker: picker.New().Title("Select a file").Items(files),
+		filepicker: picker.New().Title("File to check").Items(files),
 	}
 }
 

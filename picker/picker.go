@@ -47,6 +47,11 @@ func (m Model) GetSelected() string {
 	return m.selected
 }
 
+func (m Model) ClearSelected() Model {
+	m.selected = ""
+	return m
+}
+
 func (m Model) Title(title string) Model {
 	m.title = title
 	return m
@@ -67,7 +72,7 @@ func indicator(selected bool) string {
 func (m Model) View() string {
 	count := fmt.Sprintf("(%d/%d)", m.cursor+1, len(m.filtered))
 
-	fallback := " / to search"
+	fallback := "/ to search"
 	if m.search != "" {
 		fallback = m.search
 	}
@@ -75,7 +80,7 @@ func (m Model) View() string {
 	header := theme.
 		Heading.
 		Render(m.title+" "+count) +
-		theme.Faded.Render(fallback)
+		theme.Faded.MarginLeft(1).Render(fallback)
 
 	if m.searching {
 		header = theme.Heading.Render("Search "+count) + " " + m.search + "_"
