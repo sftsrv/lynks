@@ -3,6 +3,7 @@ package picker
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
+	"github.com/sftsrv/lynks/theme"
 )
 
 type Model struct {
@@ -14,26 +15,28 @@ type Model struct {
 	cursor    int
 }
 
-func New(items []string) Model {
-	return Model{
-		items: items,
-	}
+func New() Model {
+	return Model{}
 }
 
-func (p Model) Title(title string) Model {
-	p.title = title
+func (m Model) Items(items []string) Model {
+	m.items = items
+	return m
+}
 
-	return p
+func (m Model) Title(title string) Model {
+	m.title = title
+	return m
 }
 
 func (_ Model) Init() tea.Cmd {
 	return nil
 }
 
-func (p Model) View() string {
-	header := p.title
-	if p.searching {
-		header = "Search + " + p.search
+func (m Model) View() string {
+	header := theme.Heading.Render(m.title) + theme.Faded.Render(" / to search")
+	if m.searching {
+		header = theme.Heading.Render("Search") + " " + m.search + "_"
 	}
 
 	return lg.JoinVertical(
@@ -42,43 +45,43 @@ func (p Model) View() string {
 	)
 }
 
-func (p Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	m := max(len(p.filtered)-1, 0)
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	maxIndex := max(len(m.filtered)-1, 0)
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		str := msg.String()
 		switch str {
 		case "left", "h":
-			p.cursor = 0
+			m.cursor = 0
 		case "right", "l":
-			p.cursor = m
+			m.cursor = maxIndex
 
 		case "up", "k":
-			p.cursor = clamp(p.cursor-1, 0, m)
+			m.cursor = clamp(m.cursor-1, 0, maxIndex)
 
 		case "down", "j":
-			p.cursor = clamp(p.cursor+1, 0, m)
+			m.cursor = clamp(m.cursor+1, 0, maxIndex)
 
 		case "esc":
-			p.searching = false
+			m.searching = false
 
 		case "/":
-			p.searching = true
+			m.searching = true
 
 		case "backspace":
-			if p.search != "" {
-				p.search = p.search[0 : len(p.search)-1]
+			if m.search != "" {
+				m.search = m.search[0 : len(m.search)-1]
 			}
 
 		default:
 			if len(str) == 1 {
-				p.search += str
+				m.search += str
 			}
 		}
 	}
 
-	return p, nil
+	return m, nil
 }
 
 func clamp(i int, min int, max int) int {

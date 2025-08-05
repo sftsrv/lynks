@@ -55,7 +55,7 @@ func (m model) View() string {
 
 func initialModel(files []string) model {
 	return model{
-		filepicker: picker.New(files).Title("Select a filexx"),
+		filepicker: picker.New().Title("Select a file").Items(files),
 	}
 }
 
