@@ -58,10 +58,10 @@ func (_ Model) Init() tea.Cmd {
 
 func indicator(selected bool) string {
 	if !selected {
-		return theme.Faded.PaddingLeft(3).Render("")
+		return theme.Faded.PaddingLeft(2).Render("")
 	}
 
-	return theme.Active.PaddingLeft(1).PaddingRight(1).Render("→")
+	return theme.Active.PaddingRight(1).Render("→")
 }
 
 func (m Model) View() string {
@@ -95,7 +95,7 @@ func (m Model) View() string {
 	return lg.JoinVertical(
 		lg.Top,
 		header,
-		lg.JoinVertical(lg.Top, content...),
+		lg.NewStyle().BorderLeft(true).BorderForeground(theme.ColorPrimary).BorderStyle(lg.NormalBorder()).Render(lg.JoinVertical(lg.Top, content...)),
 	)
 }
 
@@ -163,6 +163,11 @@ func (m Model) clearSelected() Model {
 	return m
 }
 
+func (m Model) clearSearch() Model {
+	m.search = ""
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	maxIndex := max(len(m.filtered)-1, 0)
 
@@ -210,7 +215,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m = m.setSelected()
 
 			case "esc":
-				m = m.clearSelected()
+				m = m.clearSelected().clearSearch().applyFilter()
 
 			case "/":
 				m.searching = true
