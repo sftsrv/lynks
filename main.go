@@ -19,6 +19,7 @@ type window struct {
 type model struct {
 	window
 	filepicker picker.Model
+	selected   string
 }
 
 func (m model) Init() tea.Cmd {
@@ -49,8 +50,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) View() string {
+func (m model) pickerView() string {
 	return m.filepicker.View()
+	// fp := m.filepicker.Height(m.height)
+
+	// return fp.View()
+}
+
+func (m model) View() string {
+
+	if m.selected == "" {
+		return m.pickerView()
+	}
+
+	return "Selected file is " + m.selected
+
 }
 
 func initialModel(files []string) model {

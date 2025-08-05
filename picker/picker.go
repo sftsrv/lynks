@@ -31,6 +31,17 @@ func (m Model) Items(items []string) Model {
 	return m
 }
 
+// The height of the picker is header + count == 1 + count
+func (m Model) GetHeight() int {
+	return 1 + m.count
+}
+
+// The count depends on how much space we have
+func (m Model) Height(height int) Model {
+	m.count = height - 1
+	return m.applyFilter()
+}
+
 func (m Model) Title(title string) Model {
 	m.title = title
 	return m
@@ -41,13 +52,20 @@ func (_ Model) Init() tea.Cmd {
 }
 
 func (m Model) View() string {
+	count := fmt.Sprintf("(%d/%d)", m.cursor+1, len(m.filtered))
+
+	fallback := " / to search"
+	if m.search != "" {
+		fallback = m.search
+	}
+
 	header := theme.
 		Heading.
-		Render(fmt.Sprintf("%s (%d/%d)", m.title, m.cursor+1, len(m.filtered))) +
-		theme.Faded.Render(" / to search")
+		Render(m.title+" "+count) +
+		theme.Faded.Render(fallback)
 
 	if m.searching {
-		header = theme.Heading.Render("Search") + " " + m.search + "_"
+		header = theme.Heading.Render("Search "+count) + " " + m.search + "_"
 	}
 
 	cursor, items := m.cursorWindow()
@@ -74,7 +92,7 @@ func (m Model) cursorWindow() (int, []string) {
 	itemCount := len(m.filtered)
 
 	if m.cursor < 2 {
-		return m.cursor, m.filtered[0:min(m.count, itemCount)]
+		return m.cursor, m.filtered[0:min(m.count+1, itemCount)]
 	}
 
 	if m.cursor > itemCount-1 {
@@ -90,6 +108,9 @@ func (m Model) cursorWindow() (int, []string) {
 }
 
 func (m Model) applyFilter() Model {
+	// Must reset the cursor since we're modifying the underlying list
+	m.cursor = 0
+
 	if m.search == "" {
 		m.filtered = m.items
 		return m
@@ -105,6 +126,20 @@ func (m Model) applyFilter() Model {
 	return m
 }
 
+func (m Model) cursorUp() Model {
+	maxIndex := max(len(m.filtered)-1, 0)
+	m.cursor = clamp(m.cursor-1, 0, maxIndex)
+
+	return m
+}
+
+func (m Model) cursorDown() Model {
+	maxIndex := max(len(m.filtered)-1, 0)
+	m.cursor = clamp(m.cursor+1, 0, maxIndex)
+
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	maxIndex := max(len(m.filtered)-1, 0)
 
@@ -114,7 +149,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.searching {
 			switch str {
 
-			case "esc":
+			case "up":
+				m = m.cursorUp()
+
+			case "down":
+				m = m.cursorDown()
+
+			case "esc", "enter":
 				m.searching = false
 
 			case "backspace":
@@ -137,10 +178,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.cursor = maxIndex
 
 			case "up", "k":
-				m.cursor = clamp(m.cursor-1, 0, maxIndex)
+				m = m.cursorUp()
 
 			case "down", "j":
-				m.cursor = clamp(m.cursor+1, 0, maxIndex)
+				m = m.cursorDown()
 
 			case "/":
 				m.searching = true
