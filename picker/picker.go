@@ -58,10 +58,10 @@ func (_ Model) Init() tea.Cmd {
 
 func indicator(selected bool) string {
 	if !selected {
-		return theme.Faded.PaddingLeft(1).PaddingRight(1).Render("⦾ ")
+		return theme.Faded.PaddingLeft(3).Render("")
 	}
 
-	return theme.Active.PaddingLeft(1).PaddingRight(1).Render("⦿ ")
+	return theme.Active.PaddingLeft(1).PaddingRight(1).Render("→")
 }
 
 func (m Model) View() string {
