@@ -28,12 +28,18 @@ type file struct {
 	links          []link
 }
 
+type path string
+
+func (s path) Title() string {
+	return string(s)
+}
+
 // TODO: we need to have some kind of state of selectfile/viewlinks/fixlinks/savelinks
 type model struct {
 	window
 	file
-	filepicker picker.Model
-	linkpicker picker.Model
+	filepicker picker.Model[path]
+	linkpicker picker.Model[path]
 }
 
 func (m model) Init() tea.Cmd {
@@ -75,15 +81,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.file = file{}
 		}
 
-	case picker.SelectedMsg:
+	case picker.SelectedMsg[path]:
 		m.file = readFile(msg)
 	}
 
 	return m, nil
 }
 
-func readFile(selected picker.SelectedMsg) file {
-	path := string(selected)
+func readFile(selected picker.SelectedMsg[path]) file {
+	path := string(selected.Selected)
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)
@@ -148,9 +154,9 @@ func (m model) View() string {
 	return m.fixLinksView()
 }
 
-func initialModel(files []string) model {
+func initialModel(files []path) model {
 	return model{
-		filepicker: picker.New().Title("File to check").Items(files),
+		filepicker: picker.New[path]().Title("File to check").Items(files),
 	}
 }
 
@@ -166,8 +172,8 @@ func main() {
 	}
 }
 
-func getMarkdownFiles() []string {
-	var files []string
+func getMarkdownFiles() []path {
+	var files []path
 
 	filepath.WalkDir(".",
 		func(s string, d fs.DirEntry, err error) error {
@@ -176,7 +182,7 @@ func getMarkdownFiles() []string {
 			}
 
 			if !d.IsDir() && strings.HasSuffix(s, ".md") {
-				files = append(files, ""+s)
+				files = append(files, path(s))
 			}
 
 			return nil

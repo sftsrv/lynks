@@ -9,45 +9,61 @@ import (
 	"github.com/sftsrv/lynks/theme"
 )
 
-type Model struct {
+type Item interface {
+	Title() string
+}
+
+type Model[I Item] struct {
 	title     string
 	search    string
 	searching bool
 	cursor    int
 	count     int
-	items     []string
-	filtered  []string
+	items     []I
+	filtered  []I
 }
 
-func New() Model {
-	return Model{
+func New[I Item]() Model[I] {
+	return Model[I]{
 		count: 5,
 	}
 }
 
-func (m Model) Items(items []string) Model {
+type ItemSource[I Item] struct {
+	items []I
+}
+
+func (s ItemSource[I]) Len() int {
+	return len(s.items)
+}
+
+func (s ItemSource[I]) String(i int) string {
+	return s.items[i].Title()
+}
+
+func (m Model[I]) Items(items []I) Model[I] {
 	m.items = items
 	m.filtered = items
 	return m
 }
 
 // The height of the picker is header + count == 1 + count
-func (m Model) GetHeight() int {
+func (m Model[I]) GetHeight() int {
 	return 1 + m.count
 }
 
 // The count depends on how much space we have
-func (m Model) Height(height int) Model {
+func (m Model[I]) Height(height int) Model[I] {
 	m.count = height - 1
 	return m.applyFilter()
 }
 
-func (m Model) Title(title string) Model {
+func (m Model[I]) Title(title string) Model[I] {
 	m.title = title
 	return m
 }
 
-func (_ Model) Init() tea.Cmd {
+func (_ Model[I]) Init() tea.Cmd {
 	return nil
 }
 
@@ -59,7 +75,7 @@ func indicator(selected bool) string {
 	return theme.Active.PaddingRight(1).Render("→")
 }
 
-func (m Model) View() string {
+func (m Model[I]) View() string {
 	count := fmt.Sprintf("(%d/%d)", m.cursor+1, len(m.filtered))
 
 	fallback := "/ to search"
@@ -94,28 +110,42 @@ func (m Model) View() string {
 	)
 }
 
+func getTitles[I Item](items []I) []string {
+	strs := []string{}
+
+	for _, i := range items {
+		strs = append(strs, i.Title())
+	}
+
+	return strs
+
+}
+
 // Gets the cursor position in a relative window with one item padding if possible.
 // Prefers to keep cursor at the top
-func (m Model) cursorWindow() (int, []string) {
+func (m Model[I]) cursorWindow() (int, []string) {
 	itemCount := len(m.filtered)
 
 	if m.cursor < 2 {
-		return m.cursor, m.filtered[0:min(m.count, itemCount)]
+		items := m.filtered[0:min(m.count, itemCount)]
+		return m.cursor, getTitles(items)
 	}
 
 	if m.cursor > itemCount-1 {
 		items := m.filtered[max(0, itemCount-m.count-1):itemCount]
 		lastItem := len(items) - 1
-		return lastItem, items
+		return lastItem, getTitles(items)
 	}
 
 	first := m.cursor - 1
 	last := min(m.cursor+m.count-1, itemCount)
-	return 1, m.filtered[first:last]
+	items := m.filtered[first:last]
+
+	return 1, getTitles(items)
 
 }
 
-func (m Model) applyFilter() Model {
+func (m Model[I]) applyFilter() Model[I] {
 	// Must reset the cursor since we're modifying the underlying list
 	m.cursor = 0
 
@@ -124,9 +154,11 @@ func (m Model) applyFilter() Model {
 		return m
 	}
 
-	matches := fuzzy.Find(m.search, m.items)
+	itemSource := ItemSource[I]{m.items}
 
-	m.filtered = []string{}
+	matches := fuzzy.FindFrom(m.search, itemSource)
+
+	m.filtered = []I{}
 	for _, match := range matches {
 		m.filtered = append(m.filtered, m.items[match.Index])
 	}
@@ -134,35 +166,39 @@ func (m Model) applyFilter() Model {
 	return m
 }
 
-func (m Model) cursorUp() Model {
+func (m Model[I]) cursorUp() Model[I] {
 	maxIndex := max(len(m.filtered)-1, 0)
 	m.cursor = clamp(m.cursor-1, 0, maxIndex)
 
 	return m
 }
 
-func (m Model) cursorDown() Model {
+func (m Model[I]) cursorDown() Model[I] {
 	maxIndex := max(len(m.filtered)-1, 0)
 	m.cursor = clamp(m.cursor+1, 0, maxIndex)
 
 	return m
 }
 
-func (m Model) clearSearch() Model {
+func (m Model[I]) clearSearch() Model[I] {
 	m.searching = false
 	m.search = ""
 	return m
 }
 
-type SelectedMsg string
+type SelectedMsg[I Item] struct {
+	Selected I
+}
 
-func (m Model) selectedMsg() tea.Cmd {
+func (m Model[I]) selectedMsg() tea.Cmd {
 	return func() tea.Msg {
-		return SelectedMsg(m.filtered[m.cursor])
+		return SelectedMsg[I]{
+			m.filtered[m.cursor],
+		}
 	}
 }
 
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model[I]) Update(msg tea.Msg) (Model[I], tea.Cmd) {
 	maxIndex := max(len(m.filtered)-1, 0)
 
 	switch msg := msg.(type) {
