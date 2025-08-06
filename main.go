@@ -24,8 +24,9 @@ type link struct {
 }
 
 type file struct {
-	path, contents string
-	links          []link
+	path
+	contents string
+	links    []link
 }
 
 type path string
@@ -89,8 +90,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func readFile(selected picker.SelectedMsg[path]) file {
-	path := string(selected.Selected)
-	buf, err := os.ReadFile(path)
+	path := selected.Selected
+	buf, err := os.ReadFile(string(path))
 	if err != nil {
 		panic(err)
 	}
@@ -133,7 +134,7 @@ func (m model) pickerView() string {
 
 func (m model) fixLinksView() string {
 	selected := m.file.path
-	header := theme.Heading.Render("Selected file") + theme.Primary.MarginLeft(1).Render(selected)
+	header := theme.Heading.Render("Selected file") + theme.Primary.MarginLeft(1).Render(string(selected))
 
 	links := fmt.Sprintf("links: %v", m.links)
 

@@ -9,10 +9,6 @@ import (
 	"github.com/sftsrv/lynks/theme"
 )
 
-type Item interface {
-	Title() string
-}
-
 type Model[I Item] struct {
 	title     string
 	search    string
@@ -21,24 +17,6 @@ type Model[I Item] struct {
 	count     int
 	items     []I
 	filtered  []I
-}
-
-func New[I Item]() Model[I] {
-	return Model[I]{
-		count: 5,
-	}
-}
-
-type ItemSource[I Item] struct {
-	items []I
-}
-
-func (s ItemSource[I]) Len() int {
-	return len(s.items)
-}
-
-func (s ItemSource[I]) String(i int) string {
-	return s.items[i].Title()
 }
 
 func (m Model[I]) Items(items []I) Model[I] {
@@ -108,17 +86,6 @@ func (m Model[I]) View() string {
 		header,
 		lg.NewStyle().BorderLeft(true).BorderForeground(theme.ColorPrimary).BorderStyle(lg.NormalBorder()).Render(lg.JoinVertical(lg.Top, content...)),
 	)
-}
-
-func getTitles[I Item](items []I) []string {
-	strs := []string{}
-
-	for _, i := range items {
-		strs = append(strs, i.Title())
-	}
-
-	return strs
-
 }
 
 // Gets the cursor position in a relative window with one item padding if possible.
