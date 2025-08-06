@@ -15,7 +15,6 @@ type Model struct {
 	searching bool
 	cursor    int
 	count     int
-	selected  string
 	items     []string
 	filtered  []string
 }
@@ -41,15 +40,6 @@ func (m Model) GetHeight() int {
 func (m Model) Height(height int) Model {
 	m.count = height - 1
 	return m.applyFilter()
-}
-
-func (m Model) GetSelected() string {
-	return m.selected
-}
-
-func (m Model) ClearSelected() Model {
-	m.selected = ""
-	return m
 }
 
 func (m Model) Title(title string) Model {
@@ -158,19 +148,18 @@ func (m Model) cursorDown() Model {
 	return m
 }
 
-func (m Model) setSelected() Model {
-	m.selected = m.filtered[m.cursor]
-	return m
-}
-
-func (m Model) clearSelected() Model {
-	m.selected = ""
-	return m
-}
-
 func (m Model) clearSearch() Model {
+	m.searching = false
 	m.search = ""
 	return m
+}
+
+type SelectedMsg string
+
+func (m Model) selectedMsg() tea.Cmd {
+	return func() tea.Msg {
+		return SelectedMsg(m.filtered[m.cursor])
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -188,8 +177,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			case "down":
 				m = m.cursorDown()
 
-			case "esc", "enter":
-				m.searching = false
+			case "esc":
+				m = m.clearSearch().applyFilter()
+
+			case "enter":
+				return m, m.selectedMsg()
 
 			case "backspace":
 				if m.search != "" {
@@ -207,6 +199,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			switch str {
 			case "left", "h":
 				m.cursor = 0
+
 			case "right", "l":
 				m.cursor = maxIndex
 
@@ -217,10 +210,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m = m.cursorDown()
 
 			case " ", "enter":
-				m = m.setSelected()
+				return m, m.selectedMsg()
 
 			case "esc":
-				m = m.clearSelected().clearSearch().applyFilter()
+				m = m.clearSearch().applyFilter()
 
 			case "/":
 				m.searching = true

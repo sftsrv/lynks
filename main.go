@@ -40,14 +40,16 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func (m model) hasFile() bool {
+	return m.file.path != ""
+}
+
 func (w *window) updateWindowSize(width int, height int) {
 	w.width = width
 	w.height = height
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	selected := m.filepicker.GetSelected()
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.window.updateWindowSize(msg.Width, msg.Height)
@@ -55,33 +57,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
+		str := msg.String()
 
-		case "esc":
-			if selected != "" {
-				m.filepicker = m.filepicker.ClearSelected()
-				return m, nil
-			}
+		if str == "ctrl+c" {
+			return m, tea.Quit
 		}
 
-		if selected == "" {
+		// if no file selected, delegate messag handling to picker
+		if !m.hasFile() {
 			var cmd tea.Cmd
 			m.filepicker, cmd = m.filepicker.Update(msg)
 			return m, cmd
 		}
 
-		// for some reason this seems to be one update late, need
-		// to figure out why that's happening
-		m.file = readFile(selected)
+		switch str {
+		case "esc", "q":
+			m.file = file{}
+		}
 
+	case picker.SelectedMsg:
+		m.file = readFile(msg)
 	}
 
 	return m, nil
 }
 
-func readFile(path string) file {
+func readFile(selected picker.SelectedMsg) file {
+	path := string(selected)
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)
@@ -124,7 +126,7 @@ func (m model) pickerView() string {
 }
 
 func (m model) fixLinksView() string {
-	selected := m.filepicker.GetSelected()
+	selected := m.file.path
 	header := theme.Heading.Render("Selected file") + theme.Primary.MarginLeft(1).Render(selected)
 
 	links := fmt.Sprintf("links: %v", m.links)
@@ -137,8 +139,9 @@ func (m model) fixLinksView() string {
 }
 
 func (m model) View() string {
-	selected := m.filepicker.GetSelected()
-	if selected == "" {
+	selected := m.hasFile()
+
+	if !selected {
 		return m.pickerView()
 	}
 
