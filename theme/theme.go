@@ -8,6 +8,7 @@ var ColorBlack = lg.Color("0")
 var ColorWhite = lg.Color("15")
 var ColorFaded = lg.Color("189")
 var ColorPrimary = lg.Color("183")
+var ColorSecondary = lg.Color("105")
 
 var Heading = lg.NewStyle().Bold(true).Foreground(ColorWhite).PaddingLeft(1).PaddingRight(1).Background(ColorPrimary)
 var Primary = lg.NewStyle().Foreground(ColorPrimary)

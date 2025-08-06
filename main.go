@@ -19,14 +19,39 @@ type window struct {
 	height int
 }
 
+type linkStatus int
+
+const (
+	resolved linkStatus = iota
+	unresolved
+	remote
+)
+
 type link struct {
-	name, url string
+	name, url, absolute string
+	status              linkStatus
+}
+
+func (l link) icon() string {
+	switch l.status {
+	case remote:
+		return "www"
+	case resolved:
+		return "loc"
+	case unresolved:
+		return "xxx"
+	}
+
+	return "???"
+}
+
+func (l link) Title() string {
+	return l.icon() + " " + lg.NewStyle().Bold(true).Render(l.name) + " " + l.absolute + " (" + l.url + ")"
 }
 
 type file struct {
 	path
 	contents string
-	links    []link
 }
 
 type path string
@@ -35,20 +60,25 @@ func (s path) Title() string {
 	return string(s)
 }
 
+type state int
+
+const (
+	filePicker state = iota
+	linkPickerView
+)
+
 // TODO: we need to have some kind of state of selectfile/viewlinks/fixlinks/savelinks
 type model struct {
+	state state
+	base  string
 	window
 	file
 	filepicker picker.Model[path]
-	linkpicker picker.Model[path]
+	linkpicker picker.Model[link]
 }
 
 func (m model) Init() tea.Cmd {
 	return nil
-}
-
-func (m model) hasFile() bool {
-	return m.file.path != ""
 }
 
 func (w *window) updateWindowSize(width int, height int) {
@@ -61,7 +91,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.window.updateWindowSize(msg.Width, msg.Height)
 		m.filepicker = m.filepicker.Height(msg.Height)
+		m.linkpicker = m.linkpicker.Height(msg.Height - 1)
 		return m, nil
+
+	case picker.SelectedMsg[path]:
+		file, links := readFile(m.base, msg.Selected)
+
+		m.state = linkPickerView
+		m.file = file
+		m.linkpicker = m.linkpicker.Items(links)
 
 	case tea.KeyMsg:
 		str := msg.String()
@@ -71,26 +109,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// if no file selected, delegate messag handling to picker
-		if !m.hasFile() {
+		switch m.state {
+		case filePicker:
 			var cmd tea.Cmd
 			m.filepicker, cmd = m.filepicker.Update(msg)
 			return m, cmd
-		}
 
-		switch str {
-		case "esc", "q":
-			m.file = file{}
-		}
+		case linkPickerView:
+			if str == "esc" {
+				m.state = filePicker
+			}
 
-	case picker.SelectedMsg[path]:
-		m.file = readFile(msg)
+			var cmd tea.Cmd
+			m.linkpicker, cmd = m.linkpicker.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil
 }
 
-func readFile(selected picker.SelectedMsg[path]) file {
-	path := selected.Selected
+// TODO: fix this function, does not work correctly for relative links
+func resolveLink(base string, relative string, url string) (linkStatus, string) {
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return remote, url
+	}
+
+	if strings.HasPrefix(url, "/") {
+		url = base + url
+	}
+
+	dir, dirErr := filepath.Rel(string(relative), "..")
+	if dirErr != nil {
+		return unresolved, url
+	}
+
+	absPath, absErr := filepath.Abs(filepath.Join(dir, url))
+	if absErr != nil {
+		return unresolved, relative
+	}
+
+	stat, statErr := os.Stat(absPath)
+	if statErr != nil {
+		return unresolved, absPath
+	}
+
+	if stat.IsDir() {
+		return unresolved, absPath
+	}
+
+	return resolved, absPath
+}
+
+func readFile(base string, path path) (file, []link) {
 	buf, err := os.ReadFile(string(path))
 	if err != nil {
 		panic(err)
@@ -106,14 +177,20 @@ func readFile(selected picker.SelectedMsg[path]) file {
 
 	for _, match := range matches {
 
-		name := nameRe.FindString(match)
-		url := urlRe.FindString(match)
+		namePart := nameRe.FindString(match)
+		urlPart := urlRe.FindString(match)
 
-		if name != "" && url != "" {
+		if namePart != "" && urlPart != "" {
+			name := namePart[1 : len(namePart)-1]
+			url := urlPart[1 : len(urlPart)-1]
+			status, absolute := resolveLink(base, string(path), url)
+
 			links = append(links,
 				link{
-					name: name[1 : len(name)-1],
-					url:  url[1 : len(url)-1],
+					name,
+					url,
+					absolute,
+					status,
 				},
 			)
 		}
@@ -124,40 +201,42 @@ func readFile(selected picker.SelectedMsg[path]) file {
 	return file{
 		path,
 		contents,
-		links,
-	}
+	}, links
 }
 
-func (m model) pickerView() string {
+func (m model) filePickerView() string {
 	return m.filepicker.View()
 }
 
-func (m model) fixLinksView() string {
+func (m model) linkPickerView() string {
 	selected := m.file.path
-	header := theme.Heading.Render("Selected file") + theme.Primary.MarginLeft(1).Render(string(selected))
-
-	links := fmt.Sprintf("links: %v", m.links)
+	header := theme.Heading.Render("Links for") + theme.Primary.MarginLeft(1).Render(string(selected))
 
 	return lg.JoinVertical(
 		lg.Top,
 		header,
-		links,
+		m.linkpicker.View(),
 	)
 }
 
 func (m model) View() string {
-	selected := m.hasFile()
+	switch m.state {
+	case filePicker:
+		return m.filePickerView()
 
-	if !selected {
-		return m.pickerView()
+	case linkPickerView:
+		return m.linkPickerView()
 	}
 
-	return m.fixLinksView()
+	return "unexpected state"
 }
 
 func initialModel(files []path) model {
 	return model{
-		filepicker: picker.New[path]().Title("File to check").Items(files),
+		base:       ".",
+		state:      filePicker,
+		filepicker: picker.New[path]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
+		linkpicker: picker.New[link]().Title("Edit Link").Accent(theme.ColorSecondary),
 	}
 }
 

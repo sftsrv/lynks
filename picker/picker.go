@@ -10,6 +10,7 @@ import (
 )
 
 type Model[I Item] struct {
+	accent    lg.Color
 	title     string
 	search    string
 	searching bool
@@ -17,6 +18,13 @@ type Model[I Item] struct {
 	count     int
 	items     []I
 	filtered  []I
+}
+
+func New[I Item]() Model[I] {
+	return Model[I]{
+		accent: theme.ColorPrimary,
+		count:  5,
+	}
 }
 
 func (m Model[I]) Items(items []I) Model[I] {
@@ -36,6 +44,11 @@ func (m Model[I]) Height(height int) Model[I] {
 	return m.applyFilter()
 }
 
+func (m Model[I]) Accent(accent lg.Color) Model[I] {
+	m.accent = accent
+	return m
+}
+
 func (m Model[I]) Title(title string) Model[I] {
 	m.title = title
 	return m
@@ -45,12 +58,13 @@ func (_ Model[I]) Init() tea.Cmd {
 	return nil
 }
 
-func indicator(selected bool) string {
+func indicator(accent lg.Color, selected bool, title string) string {
 	if !selected {
-		return theme.Faded.PaddingLeft(2).Render("")
+		return lg.NewStyle().PaddingRight(2).Render("") + title
 	}
 
-	return theme.Active.PaddingRight(1).Render("→")
+	return lg.NewStyle().PaddingRight(1).Foreground(accent).Render("→") +
+		lg.NewStyle().Foreground(accent).Bold(true).Render(title)
 }
 
 func (m Model[I]) View() string {
@@ -63,28 +77,29 @@ func (m Model[I]) View() string {
 
 	header := theme.
 		Heading.
+		Background(m.accent).
 		Render(m.title+" "+count) +
 		theme.Faded.MarginLeft(1).Render(fallback)
 
 	if m.searching {
-		header = theme.Heading.Render("Search "+count) + " " + m.search + "_"
+		header = theme.Heading.Background(m.accent).Render("Search "+count) + " " + m.search + "_"
 	}
 
 	cursor, items := m.cursorWindow()
 	content := []string{}
 
 	for i, item := range items {
-		if i == cursor {
-			content = append(content, indicator(true)+theme.Primary.Render(item))
-		} else {
-			content = append(content, indicator(false)+item)
-		}
+		content = append(content, indicator(m.accent, i == cursor, item))
+	}
+
+	if len(items) < m.count {
+		content = append(content, theme.Faded.Render("no more items"))
 	}
 
 	return lg.JoinVertical(
 		lg.Top,
 		header,
-		lg.NewStyle().BorderLeft(true).BorderForeground(theme.ColorPrimary).BorderStyle(lg.NormalBorder()).Render(lg.JoinVertical(lg.Top, content...)),
+		lg.NewStyle().BorderLeft(true).BorderForeground(m.accent).BorderStyle(lg.NormalBorder()).Render(lg.JoinVertical(lg.Top, content...)),
 	)
 }
 
