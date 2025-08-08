@@ -38,6 +38,7 @@ type link struct {
 
 type Config struct {
 	resolveExtension string
+	aliases          []alias
 }
 
 func (l link) color() lg.Color {
@@ -51,6 +52,30 @@ func (l link) color() lg.Color {
 	}
 
 	return theme.ColorError
+}
+
+type alias struct {
+	alias, actual string
+}
+
+func (c Config) addAlias(link string) string {
+	for _, alias := range c.aliases {
+		if after, ok := strings.CutPrefix(link, alias.actual); ok {
+			return alias.alias + after
+		}
+	}
+
+	return link
+}
+
+func (c Config) removeAlias(link string) string {
+	for _, alias := range c.aliases {
+		if after, ok := strings.CutPrefix(link, alias.alias); ok {
+			return alias.actual + after
+		}
+	}
+
+	return link
 }
 
 func (l link) Title() string {
@@ -172,7 +197,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// TODO: fix this function, does not work correctly for relative links
 func resolveLink(config Config, relative string, url string) (linkStatus, relativePath) {
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 		return remote, relativePath(url)
@@ -182,6 +206,8 @@ func resolveLink(config Config, relative string, url string) (linkStatus, relati
 
 	if strings.HasPrefix(p, "../") {
 		p = filepath.Join(filepath.Dir(relative), p)
+	} else {
+		p = config.removeAlias(p)
 	}
 
 	stat, statErr := os.Stat(p)
@@ -198,7 +224,7 @@ func resolveLink(config Config, relative string, url string) (linkStatus, relati
 
 func fixLink(config Config, file file, link link, path relativePath) file {
 	oldLink := fmt.Sprintf("[%s](%s)", link.name, link.url)
-	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(string(path), config.resolveExtension))
+	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(config.addAlias(string(path)), config.resolveExtension))
 
 	file.contents = strings.Replace(file.contents, oldLink, newLink, 1)
 	return file
@@ -313,6 +339,11 @@ func initialModel(files []relativePath) model {
 	return model{
 		config: Config{
 			resolveExtension: ".md",
+			aliases: []alias{
+				{actual: "docs-md", alias: "/docs"},
+				{actual: "blog-md", alias: "/blog"},
+				{actual: "", alias: "/"},
+			},
 		},
 		state:      filePickerView,
 		filepicker: picker.New[relativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
