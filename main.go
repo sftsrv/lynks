@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -28,13 +29,15 @@ const (
 )
 
 type link struct {
-	name, url, absolute string
-	status              linkStatus
+	name string
+	url  string
+
+	resolved relativePath
+	status   linkStatus
 }
 
 type Config struct {
-	base         string
-	hasExtension bool
+	resolveExtension string
 }
 
 func (l link) color() lg.Color {
@@ -51,17 +54,17 @@ func (l link) color() lg.Color {
 }
 
 func (l link) Title() string {
-	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + l.absolute + " (" + l.url + ")")
+	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + string(l.resolved) + " (" + l.url + ")")
 }
 
 type file struct {
-	path     path
+	path     relativePath
 	contents string
 }
 
-type path string
+type relativePath string
 
-func (s path) Title() string {
+func (s relativePath) Title() string {
 	return string(s)
 }
 
@@ -73,7 +76,6 @@ const (
 	linkFixerView
 )
 
-// TODO: we need to have some kind of state of selectfile/viewlinks/fixlinks/savelinks
 type model struct {
 	config Config
 
@@ -81,11 +83,11 @@ type model struct {
 	window window
 
 	file       file
-	filepicker picker.Model[path]
+	filepicker picker.Model[relativePath]
 
 	link       link
 	linkpicker picker.Model[link]
-	linkfixer  picker.Model[path]
+	linkfixer  picker.Model[relativePath]
 }
 
 func (m model) Init() tea.Cmd {
@@ -106,10 +108,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.linkpicker = m.linkpicker.Height(msg.Height - 3)
 		return m, nil
 
-	case picker.SelectedMsg[path]:
+	case picker.SelectedMsg[relativePath]:
 		switch m.state {
 		case filePickerView:
-			file, links := readFile(m.config.base, msg.Selected)
+			file, links := readFile(m.config, msg.Selected)
 
 			m.state = linkPickerView
 			m.file = file
@@ -117,7 +119,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case linkFixerView:
 			m.state = linkPickerView
-			m.file = fixLink(m.file, m.link, msg.Selected)
+			updated := fixLink(m.config, m.file, m.link, msg.Selected)
+			updateFile(updated)
+			file, links := readFile(m.config, updated.path)
+
+			m.file = file
+			m.linkpicker = m.linkpicker.Items(links)
 		}
 
 	case picker.SelectedMsg[link]:
@@ -136,7 +143,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// if no file selected, delegate messag handling to picker
 		switch m.state {
 		case filePickerView:
 			var cmd tea.Cmd
@@ -167,42 +173,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // TODO: fix this function, does not work correctly for relative links
-func resolveLink(base string, relative string, url string) (linkStatus, string) {
+func resolveLink(config Config, relative string, url string) (linkStatus, relativePath) {
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return remote, url
+		return remote, relativePath(url)
 	}
 
-	if strings.HasPrefix(url, "/") {
-		url = base + url
+	p := url + config.resolveExtension
+
+	if strings.HasPrefix(p, "../") {
+		p = filepath.Join(filepath.Dir(relative), p)
 	}
 
-	dir, dirErr := filepath.Rel(string(relative), "..")
-	if dirErr != nil {
-		return unresolved, url
-	}
-
-	absPath, absErr := filepath.Abs(filepath.Join(dir, url))
-	if absErr != nil {
-		return unresolved, relative
-	}
-
-	stat, statErr := os.Stat(absPath)
+	stat, statErr := os.Stat(p)
 	if statErr != nil {
-		return unresolved, absPath
+		return unresolved, relativePath(p)
 	}
 
 	if stat.IsDir() {
-		return unresolved, absPath
+		return unresolved, relativePath(p)
 	}
 
-	return resolved, absPath
+	return resolved, relativePath(p)
 }
 
-func fixLink(file file, link link, path path) file {
+func fixLink(config Config, file file, link link, path relativePath) file {
+	oldLink := fmt.Sprintf("[%s](%s)", link.name, link.url)
+	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(string(path), config.resolveExtension))
+
+	file.contents = strings.Replace(file.contents, oldLink, newLink, 1)
 	return file
 }
 
-func readFile(base string, path path) (file, []link) {
+func updateFile(file file) {
+	osFile, err := os.Create(string(file.path))
+	if err != nil {
+		panic(fmt.Errorf("Failed to open file: %v", err))
+	}
+
+	_, err = osFile.WriteString(file.contents)
+	if err != nil {
+		panic(fmt.Errorf("Failed to update file: %v", err))
+	}
+
+	err = osFile.Close()
+	if err != nil {
+		panic(fmt.Errorf("Failed to close file: %v", err))
+	}
+}
+
+func readFile(config Config, path relativePath) (file, []link) {
 	buf, err := os.ReadFile(string(path))
 	if err != nil {
 		panic(err)
@@ -224,13 +243,13 @@ func readFile(base string, path path) (file, []link) {
 		if namePart != "" && urlPart != "" {
 			name := namePart[1 : len(namePart)-1]
 			url := urlPart[1 : len(urlPart)-1]
-			status, absolute := resolveLink(base, string(path), url)
+			status, resolved := resolveLink(config, string(path), url)
 
 			links = append(links,
 				link{
 					name,
 					url,
-					absolute,
+					resolved,
 					status,
 				},
 			)
@@ -290,15 +309,15 @@ func (m model) View() string {
 	return "unexpected state"
 }
 
-func initialModel(files []path) model {
+func initialModel(files []relativePath) model {
 	return model{
 		config: Config{
-			base: ".",
+			resolveExtension: ".md",
 		},
 		state:      filePickerView,
-		filepicker: picker.New[path]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
+		filepicker: picker.New[relativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
 		linkpicker: picker.New[link]().Title("Edit Link").Accent(theme.ColorSecondary),
-		linkfixer:  picker.New[path]().Title("Fix link").Accent(theme.ColorWarn).Items(files),
+		linkfixer:  picker.New[relativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(files),
 	}
 }
 
@@ -314,17 +333,18 @@ func main() {
 	}
 }
 
-func getMarkdownFiles() []path {
-	var files []path
+func getMarkdownFiles() []relativePath {
+	var files []relativePath
 
-	filepath.WalkDir(".",
+	root := "./"
+	filepath.WalkDir(root,
 		func(s string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 
 			if !d.IsDir() && strings.HasSuffix(s, ".md") {
-				files = append(files, path(s))
+				files = append(files, relativePath(path.Join(root, s)))
 			}
 
 			return nil
