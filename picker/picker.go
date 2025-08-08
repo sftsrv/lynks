@@ -22,8 +22,9 @@ type Model[I Item] struct {
 
 func New[I Item]() Model[I] {
 	return Model[I]{
-		accent: theme.ColorPrimary,
-		count:  5,
+		searching: true,
+		accent:    theme.ColorPrimary,
+		count:     5,
 	}
 }
 

@@ -130,7 +130,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.window.updateWindowSize(msg.Width, msg.Height)
 		m.filepicker = m.filepicker.Height(msg.Height)
 		m.linkpicker = m.linkpicker.Height(msg.Height - 1)
-		m.linkpicker = m.linkpicker.Height(msg.Height - 3)
+		m.linkfixer = m.linkfixer.Height(msg.Height - 3)
 		return m, nil
 
 	case picker.SelectedMsg[relativePath]:
@@ -335,16 +335,9 @@ func (m model) View() string {
 	return "unexpected state"
 }
 
-func initialModel(files []relativePath) model {
+func initialModel(config Config, files []relativePath) model {
 	return model{
-		config: Config{
-			resolveExtension: ".md",
-			aliases: []alias{
-				{actual: "docs-md", alias: "/docs"},
-				{actual: "blog-md", alias: "/blog"},
-				{actual: "", alias: "/"},
-			},
-		},
+		config:     config,
 		state:      filePickerView,
 		filepicker: picker.New[relativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
 		linkpicker: picker.New[link]().Title("Edit Link").Accent(theme.ColorSecondary),
@@ -353,9 +346,18 @@ func initialModel(files []relativePath) model {
 }
 
 func main() {
-	files := getMarkdownFiles()
+	config := Config{
+		resolveExtension: ".md",
+		aliases: []alias{
+			{actual: "docs-md", alias: "/docs"},
+			{actual: "blog-md", alias: "/blog"},
+			{actual: "", alias: "/"},
+		},
+	}
 
-	m := initialModel(files)
+	files := getMarkdownFiles(config)
+
+	m := initialModel(config, files)
 
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
@@ -364,7 +366,7 @@ func main() {
 	}
 }
 
-func getMarkdownFiles() []relativePath {
+func getMarkdownFiles(config Config) []relativePath {
 	var files []relativePath
 
 	root := "./"
@@ -374,7 +376,7 @@ func getMarkdownFiles() []relativePath {
 				return err
 			}
 
-			if !d.IsDir() && strings.HasSuffix(s, ".md") {
+			if !d.IsDir() && strings.HasSuffix(s, config.resolveExtension) {
 				files = append(files, relativePath(path.Join(root, s)))
 			}
 
