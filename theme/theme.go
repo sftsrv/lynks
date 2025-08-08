@@ -10,6 +10,9 @@ var ColorFaded = lg.Color("189")
 var ColorPrimary = lg.Color("183")
 var ColorSecondary = lg.Color("105")
 
+var ColorWarn = lg.Color("220")
+var ColorError = lg.Color("160")
+
 var Heading = lg.NewStyle().Bold(true).Foreground(ColorWhite).PaddingLeft(1).PaddingRight(1).Background(ColorPrimary)
 var Primary = lg.NewStyle().Foreground(ColorPrimary)
 var Faded = lg.NewStyle().Foreground(ColorFaded)

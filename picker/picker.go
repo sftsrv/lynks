@@ -44,6 +44,12 @@ func (m Model[I]) Height(height int) Model[I] {
 	return m.applyFilter()
 }
 
+// if the search is changed externally then filters need to be re-applied
+func (m Model[I]) Search(search string) Model[I] {
+	m.search = search
+	return m.applyFilter()
+}
+
 func (m Model[I]) Accent(accent lg.Color) Model[I] {
 	m.accent = accent
 	return m

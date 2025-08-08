@@ -32,25 +32,30 @@ type link struct {
 	status              linkStatus
 }
 
-func (l link) icon() string {
+type Config struct {
+	base         string
+	hasExtension bool
+}
+
+func (l link) color() lg.Color {
 	switch l.status {
 	case remote:
-		return "www"
+		return theme.ColorSecondary
 	case resolved:
-		return "loc"
+		return theme.ColorSecondary
 	case unresolved:
-		return "xxx"
+		return theme.ColorWarn
 	}
 
-	return "???"
+	return theme.ColorError
 }
 
 func (l link) Title() string {
-	return l.icon() + " " + lg.NewStyle().Bold(true).Render(l.name) + " " + l.absolute + " (" + l.url + ")"
+	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + l.absolute + " (" + l.url + ")")
 }
 
 type file struct {
-	path
+	path     path
 	contents string
 }
 
@@ -63,18 +68,24 @@ func (s path) Title() string {
 type state int
 
 const (
-	filePicker state = iota
+	filePickerView state = iota
 	linkPickerView
+	linkFixerView
 )
 
 // TODO: we need to have some kind of state of selectfile/viewlinks/fixlinks/savelinks
 type model struct {
-	state state
-	base  string
-	window
-	file
+	config Config
+
+	state  state
+	window window
+
+	file       file
 	filepicker picker.Model[path]
+
+	link       link
 	linkpicker picker.Model[link]
+	linkfixer  picker.Model[path]
 }
 
 func (m model) Init() tea.Cmd {
@@ -92,14 +103,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.window.updateWindowSize(msg.Width, msg.Height)
 		m.filepicker = m.filepicker.Height(msg.Height)
 		m.linkpicker = m.linkpicker.Height(msg.Height - 1)
+		m.linkpicker = m.linkpicker.Height(msg.Height - 3)
 		return m, nil
 
 	case picker.SelectedMsg[path]:
-		file, links := readFile(m.base, msg.Selected)
+		switch m.state {
+		case filePickerView:
+			file, links := readFile(m.config.base, msg.Selected)
 
-		m.state = linkPickerView
-		m.file = file
-		m.linkpicker = m.linkpicker.Items(links)
+			m.state = linkPickerView
+			m.file = file
+			m.linkpicker = m.linkpicker.Items(links)
+
+		case linkFixerView:
+			m.state = linkPickerView
+			m.file = fixLink(m.file, m.link, msg.Selected)
+		}
+
+	case picker.SelectedMsg[link]:
+		m.state = linkFixerView
+
+		parts := strings.Split(msg.Selected.url, "/")
+		last := parts[len(parts)-1]
+
+		m.linkfixer = m.linkfixer.Search(last)
+		m.link = msg.Selected
 
 	case tea.KeyMsg:
 		str := msg.String()
@@ -110,18 +138,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// if no file selected, delegate messag handling to picker
 		switch m.state {
-		case filePicker:
+		case filePickerView:
 			var cmd tea.Cmd
 			m.filepicker, cmd = m.filepicker.Update(msg)
 			return m, cmd
 
 		case linkPickerView:
 			if str == "esc" {
-				m.state = filePicker
+				m.state = filePickerView
 			}
 
 			var cmd tea.Cmd
 			m.linkpicker, cmd = m.linkpicker.Update(msg)
+			return m, cmd
+
+		case linkFixerView:
+			if str == "esc" {
+				m.state = linkPickerView
+			}
+
+			var cmd tea.Cmd
+			m.linkfixer, cmd = m.linkfixer.Update(msg)
 			return m, cmd
 		}
 	}
@@ -159,6 +196,10 @@ func resolveLink(base string, relative string, url string) (linkStatus, string) 
 	}
 
 	return resolved, absPath
+}
+
+func fixLink(file file, link link, path path) file {
+	return file
 }
 
 func readFile(base string, path path) (file, []link) {
@@ -219,13 +260,31 @@ func (m model) linkPickerView() string {
 	)
 }
 
+func (m model) linkFixerView() string {
+	selected := m.file.path
+	header := lg.JoinVertical(
+		lg.Top,
+		theme.Heading.Render("Fix links for")+theme.Primary.MarginLeft(1).Render(string(selected)),
+		lg.NewStyle().MarginLeft(4).Foreground(theme.ColorSecondary).Render(m.link.name),
+	)
+
+	return lg.JoinVertical(
+		lg.Top,
+		header,
+		m.linkfixer.View(),
+	)
+}
+
 func (m model) View() string {
 	switch m.state {
-	case filePicker:
+	case filePickerView:
 		return m.filePickerView()
 
 	case linkPickerView:
 		return m.linkPickerView()
+
+	case linkFixerView:
+		return m.linkFixerView()
 	}
 
 	return "unexpected state"
@@ -233,10 +292,13 @@ func (m model) View() string {
 
 func initialModel(files []path) model {
 	return model{
-		base:       ".",
-		state:      filePicker,
+		config: Config{
+			base: ".",
+		},
+		state:      filePickerView,
 		filepicker: picker.New[path]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
 		linkpicker: picker.New[link]().Title("Edit Link").Accent(theme.ColorSecondary),
+		linkfixer:  picker.New[path]().Title("Fix link").Accent(theme.ColorWarn).Items(files),
 	}
 }
 
