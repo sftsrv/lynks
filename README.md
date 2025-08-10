@@ -51,7 +51,7 @@ lynks
 
 #### Linter
 
-The tool can also be run as a linter which will make use of the `lynks.config.json` and can be run from the `root` using:
+The tool can also be run as a linter which will make use of the `lynks.config.json` and can be run using:
 
 ```sh
 lynks lint
