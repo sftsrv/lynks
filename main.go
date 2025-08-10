@@ -2,15 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 	"github.com/sftsrv/lynks/config"
+	"github.com/sftsrv/lynks/files"
 	"github.com/sftsrv/lynks/picker"
 	"github.com/sftsrv/lynks/theme"
 )
@@ -18,53 +16,6 @@ import (
 type window struct {
 	width  int
 	height int
-}
-
-type linkStatus int
-
-const (
-	resolved linkStatus = iota
-	unresolved
-	remote
-)
-
-type link struct {
-	name string
-	url  string
-
-	resolved relativePath
-	status   linkStatus
-}
-
-const resolveExtension = ".md"
-
-func (l link) color() lg.Color {
-	switch l.status {
-	case remote:
-		return theme.ColorSecondary
-	case resolved:
-		return theme.ColorSecondary
-	case unresolved:
-		return theme.ColorWarn
-	}
-
-	return theme.ColorError
-}
-
-func (l link) Title() string {
-	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + l.url + "->" + string(l.resolved))
-}
-
-type file struct {
-	path     relativePath
-	contents string
-	hasLinks bool
-}
-
-type relativePath string
-
-func (s relativePath) Title() string {
-	return string(s)
 }
 
 type state int
@@ -81,12 +32,12 @@ type model struct {
 	state  state
 	window window
 
-	file       file
-	filepicker picker.Model[relativePath]
+	file       files.File
+	filepicker picker.Model[files.RelativePath]
 
-	link       link
-	linkpicker picker.Model[link]
-	linkfixer  picker.Model[relativePath]
+	link       files.Link
+	linkpicker picker.Model[files.Link]
+	linkfixer  picker.Model[files.RelativePath]
 }
 
 func (m model) Init() tea.Cmd {
@@ -107,7 +58,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.linkfixer = m.linkfixer.Height(msg.Height - 3)
 		return m, nil
 
-	case picker.SelectedMsg[relativePath]:
+	case picker.SelectedMsg[files.RelativePath]:
 		switch m.state {
 		case filePickerView:
 			file, links := readFile(m.config, msg.Selected)
@@ -118,21 +69,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case linkFixerView:
 			m.state = linkPickerView
-			updated := fixLink(m.config, m.file, m.link, msg.Selected)
+			updated := files.FixLink(m.config, m.file, m.link, msg.Selected)
 			updateFile(updated)
-			file, links := readFile(m.config, updated.path)
+			file, links := readFile(m.config, updated.Path)
 
 			m.file = file
 			m.linkpicker = m.linkpicker.Items(links)
 		}
 
-	case picker.SelectedMsg[link]:
+	case picker.SelectedMsg[files.Link]:
 		m.state = linkFixerView
 
-		parts := strings.Split(msg.Selected.url, "/")
-		last := parts[len(parts)-1]
-
-		m.linkfixer = m.linkfixer.Search(last)
+		m.linkfixer = m.linkfixer.Search(msg.Selected.FileName())
 		m.link = msg.Selected
 
 	case tea.KeyMsg:
@@ -171,46 +119,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func resolveLink(config config.Config, relative string, url string) (linkStatus, relativePath) {
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return remote, relativePath(url)
-	}
-
-	p := url + resolveExtension
-
-	if strings.HasPrefix(p, "../") {
-		p = filepath.Join(filepath.Dir(relative), p)
-	} else {
-		p = config.RemoveAlias(p)
-	}
-
-	stat, statErr := os.Stat(p)
-	if statErr != nil {
-		return unresolved, relativePath(p)
-	}
-
-	if stat.IsDir() {
-		return unresolved, relativePath(p)
-	}
-
-	return resolved, relativePath(p)
-}
-
-func fixLink(config config.Config, file file, link link, path relativePath) file {
-	oldLink := fmt.Sprintf("[%s](%s)", link.name, link.url)
-	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(config.AddAlias(string(path)), resolveExtension))
-
-	file.contents = strings.Replace(file.contents, oldLink, newLink, 1)
-	return file
-}
-
-func updateFile(file file) {
-	osFile, err := os.Create(string(file.path))
+func updateFile(file files.File) {
+	osFile, err := os.Create(string(file.Path))
 	if err != nil {
 		panic(fmt.Errorf("Failed to open file: %v", err))
 	}
 
-	_, err = osFile.WriteString(file.contents)
+	_, err = osFile.WriteString(file.Contents)
 	if err != nil {
 		panic(fmt.Errorf("Failed to update file: %v", err))
 	}
@@ -221,7 +136,7 @@ func updateFile(file file) {
 	}
 }
 
-func readFile(config config.Config, path relativePath) (file, []link) {
+func readFile(config config.Config, path files.RelativePath) (files.File, []files.Link) {
 	buf, err := os.ReadFile(string(path))
 	if err != nil {
 		panic(err)
@@ -233,7 +148,7 @@ func readFile(config config.Config, path relativePath) (file, []link) {
 	urlRe := regexp.MustCompile(`\(.+?\)`)
 
 	matches := linkRe.FindAllString(contents, -1)
-	links := []link{}
+	links := []files.Link{}
 
 	for _, match := range matches {
 		namePart := nameRe.FindString(match)
@@ -242,15 +157,10 @@ func readFile(config config.Config, path relativePath) (file, []link) {
 		if namePart != "" && urlPart != "" {
 			name := namePart[1 : len(namePart)-1]
 			url := urlPart[1 : len(urlPart)-1]
-			status, resolved := resolveLink(config, string(path), url)
+			status, resolved := files.ResolveLink(config, string(path), url)
 
 			links = append(links,
-				link{
-					name,
-					url,
-					resolved,
-					status,
-				},
+				files.Link{Name: name, Url: url, Resolved: resolved, Status: status},
 			)
 		}
 
@@ -258,12 +168,7 @@ func readFile(config config.Config, path relativePath) (file, []link) {
 
 	hasLinks := len(links) > 0
 
-	// TODO: what do we do with this once we have it?
-	return file{
-		path,
-		contents,
-		hasLinks,
-	}, links
+	return files.File{Path: path, Contents: contents, HasLinks: hasLinks}, links
 }
 
 func (m model) filePickerView() string {
@@ -272,13 +177,13 @@ func (m model) filePickerView() string {
 
 func (m model) linkPickerView() string {
 
-	selected := m.file.path
+	selected := m.file.Path
 	header := theme.Heading.Render("Links for") + theme.Primary.MarginLeft(1).Render(string(selected))
 
 	noLinksMessage := theme.Faded.Render("No links found in file")
 	exitMessage := theme.Faded.Render("<esc> to go back to files")
 
-	if !m.file.hasLinks {
+	if !m.file.HasLinks {
 		return lg.JoinVertical(lg.Top, header, noLinksMessage, exitMessage)
 	}
 
@@ -290,11 +195,11 @@ func (m model) linkPickerView() string {
 }
 
 func (m model) linkFixerView() string {
-	selected := m.file.path
+	selected := m.file.Path
 	header := lg.JoinVertical(
 		lg.Top,
 		theme.Heading.Render("Fix links for")+theme.Primary.MarginLeft(1).Render(string(selected)),
-		lg.NewStyle().MarginLeft(4).Foreground(theme.ColorSecondary).Render(m.link.name),
+		lg.NewStyle().MarginLeft(4).Foreground(theme.ColorSecondary).Render(m.link.Title()),
 	)
 
 	return lg.JoinVertical(
@@ -319,13 +224,13 @@ func (m model) View() string {
 	return "unexpected state"
 }
 
-func initialModel(config config.Config, files []relativePath) model {
+func initialModel(config config.Config, f []files.RelativePath) model {
 	return model{
 		config:     config,
 		state:      filePickerView,
-		filepicker: picker.New[relativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(files),
-		linkpicker: picker.New[link]().Title("Edit Link").Accent(theme.ColorSecondary),
-		linkfixer:  picker.New[relativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(files),
+		filepicker: picker.New[files.RelativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(f),
+		linkpicker: picker.New[files.Link]().Title("Edit Link").Accent(theme.ColorSecondary),
+		linkfixer:  picker.New[files.RelativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(f),
 	}
 }
 
@@ -339,7 +244,7 @@ func main() {
 		panic(configErr)
 	}
 
-	files := getMarkdownFiles(config)
+	files := files.GetMarkdownFiles(config)
 
 	m := initialModel(config, files)
 
@@ -348,25 +253,4 @@ func main() {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-}
-
-func getMarkdownFiles(config config.Config) []relativePath {
-	var files []relativePath
-
-	root := config.Root
-	filepath.WalkDir(root,
-		func(s string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-
-			if !d.IsDir() && strings.HasSuffix(s, resolveExtension) {
-				files = append(files, relativePath(s))
-			}
-
-			return nil
-		},
-	)
-
-	return files
 }
