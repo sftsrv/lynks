@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
+	"github.com/sftsrv/lynks/config"
 	"github.com/sftsrv/lynks/picker"
 	"github.com/sftsrv/lynks/theme"
 )
@@ -36,10 +36,7 @@ type link struct {
 	status   linkStatus
 }
 
-type Config struct {
-	resolveExtension string
-	aliases          []alias
-}
+const resolveExtension = ".md"
 
 func (l link) color() lg.Color {
 	switch l.status {
@@ -54,37 +51,14 @@ func (l link) color() lg.Color {
 	return theme.ColorError
 }
 
-type alias struct {
-	alias, actual string
-}
-
-func (c Config) addAlias(link string) string {
-	for _, alias := range c.aliases {
-		if after, ok := strings.CutPrefix(link, alias.actual); ok {
-			return alias.alias + after
-		}
-	}
-
-	return link
-}
-
-func (c Config) removeAlias(link string) string {
-	for _, alias := range c.aliases {
-		if after, ok := strings.CutPrefix(link, alias.alias); ok {
-			return alias.actual + after
-		}
-	}
-
-	return link
-}
-
 func (l link) Title() string {
-	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + string(l.resolved) + " (" + l.url + ")")
+	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.name) + " " + l.url + "->" + string(l.resolved))
 }
 
 type file struct {
 	path     relativePath
 	contents string
+	hasLinks bool
 }
 
 type relativePath string
@@ -102,7 +76,7 @@ const (
 )
 
 type model struct {
-	config Config
+	config config.Config
 
 	state  state
 	window window
@@ -197,17 +171,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func resolveLink(config Config, relative string, url string) (linkStatus, relativePath) {
+func resolveLink(config config.Config, relative string, url string) (linkStatus, relativePath) {
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 		return remote, relativePath(url)
 	}
 
-	p := url + config.resolveExtension
+	p := url + resolveExtension
 
 	if strings.HasPrefix(p, "../") {
 		p = filepath.Join(filepath.Dir(relative), p)
 	} else {
-		p = config.removeAlias(p)
+		p = config.RemoveAlias(p)
 	}
 
 	stat, statErr := os.Stat(p)
@@ -222,9 +196,9 @@ func resolveLink(config Config, relative string, url string) (linkStatus, relati
 	return resolved, relativePath(p)
 }
 
-func fixLink(config Config, file file, link link, path relativePath) file {
+func fixLink(config config.Config, file file, link link, path relativePath) file {
 	oldLink := fmt.Sprintf("[%s](%s)", link.name, link.url)
-	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(config.addAlias(string(path)), config.resolveExtension))
+	newLink := fmt.Sprintf("[%s](%s)", link.name, strings.TrimSuffix(config.AddAlias(string(path)), resolveExtension))
 
 	file.contents = strings.Replace(file.contents, oldLink, newLink, 1)
 	return file
@@ -247,7 +221,7 @@ func updateFile(file file) {
 	}
 }
 
-func readFile(config Config, path relativePath) (file, []link) {
+func readFile(config config.Config, path relativePath) (file, []link) {
 	buf, err := os.ReadFile(string(path))
 	if err != nil {
 		panic(err)
@@ -262,7 +236,6 @@ func readFile(config Config, path relativePath) (file, []link) {
 	links := []link{}
 
 	for _, match := range matches {
-
 		namePart := nameRe.FindString(match)
 		urlPart := urlRe.FindString(match)
 
@@ -283,10 +256,13 @@ func readFile(config Config, path relativePath) (file, []link) {
 
 	}
 
+	hasLinks := len(links) > 0
+
 	// TODO: what do we do with this once we have it?
 	return file{
 		path,
 		contents,
+		hasLinks,
 	}, links
 }
 
@@ -295,8 +271,16 @@ func (m model) filePickerView() string {
 }
 
 func (m model) linkPickerView() string {
+
 	selected := m.file.path
 	header := theme.Heading.Render("Links for") + theme.Primary.MarginLeft(1).Render(string(selected))
+
+	noLinksMessage := theme.Faded.Render("No links found in file")
+	exitMessage := theme.Faded.Render("<esc> to go back to files")
+
+	if !m.file.hasLinks {
+		return lg.JoinVertical(lg.Top, header, noLinksMessage, exitMessage)
+	}
 
 	return lg.JoinVertical(
 		lg.Top,
@@ -335,7 +319,7 @@ func (m model) View() string {
 	return "unexpected state"
 }
 
-func initialModel(config Config, files []relativePath) model {
+func initialModel(config config.Config, files []relativePath) model {
 	return model{
 		config:     config,
 		state:      filePickerView,
@@ -346,13 +330,13 @@ func initialModel(config Config, files []relativePath) model {
 }
 
 func main() {
-	config := Config{
-		resolveExtension: ".md",
-		aliases: []alias{
-			{actual: "docs-md", alias: "/docs"},
-			{actual: "blog-md", alias: "/blog"},
-			{actual: "", alias: "/"},
-		},
+	configPath := "lynks.config.json"
+	config, configErr := config.Load(configPath)
+
+	fmt.Printf("config %v", config)
+
+	if configErr != nil {
+		panic(configErr)
 	}
 
 	files := getMarkdownFiles(config)
@@ -366,18 +350,18 @@ func main() {
 	}
 }
 
-func getMarkdownFiles(config Config) []relativePath {
+func getMarkdownFiles(config config.Config) []relativePath {
 	var files []relativePath
 
-	root := "./"
+	root := config.Root
 	filepath.WalkDir(root,
 		func(s string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 
-			if !d.IsDir() && strings.HasSuffix(s, config.resolveExtension) {
-				files = append(files, relativePath(path.Join(root, s)))
+			if !d.IsDir() && strings.HasSuffix(s, resolveExtension) {
+				files = append(files, relativePath(s))
 			}
 
 			return nil
