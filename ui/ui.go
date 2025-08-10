@@ -3,12 +3,11 @@ package ui
 import (
 	"fmt"
 	"os"
-	"regexp"
 
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 	"github.com/sftsrv/lynks/config"
-	"github.com/sftsrv/lynks/files"
+	paths "github.com/sftsrv/lynks/files"
 	"github.com/sftsrv/lynks/picker"
 	"github.com/sftsrv/lynks/theme"
 )
@@ -32,12 +31,12 @@ type Model struct {
 	state  state
 	window window
 
-	file       files.File
-	filepicker picker.Model[files.RelativePath]
+	file       paths.File
+	filepicker picker.Model[paths.RelativePath]
 
-	link       files.Link
-	linkpicker picker.Model[files.Link]
-	linkfixer  picker.Model[files.RelativePath]
+	link       paths.Link
+	linkpicker picker.Model[paths.Link]
+	linkfixer  picker.Model[paths.RelativePath]
 }
 
 func (m Model) Init() tea.Cmd {
@@ -58,10 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.linkfixer = m.linkfixer.Height(msg.Height - 3)
 		return m, nil
 
-	case picker.SelectedMsg[files.RelativePath]:
+	case picker.SelectedMsg[paths.RelativePath]:
 		switch m.state {
 		case filePickerView:
-			file, links := readFile(m.config, msg.Selected)
+			file, links := paths.ReadFile(m.config, msg.Selected)
 
 			m.state = linkPickerView
 			m.file = file
@@ -69,15 +68,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case linkFixerView:
 			m.state = linkPickerView
-			updated := files.FixLink(m.config, m.file, m.link, msg.Selected)
-			updateFile(updated)
-			file, links := readFile(m.config, updated.Path)
+			updated := paths.FixLink(m.config, m.file, m.link, msg.Selected)
+			paths.UpdateFile(updated)
+			file, links := paths.ReadFile(m.config, updated.Path)
 
 			m.file = file
 			m.linkpicker = m.linkpicker.Items(links)
 		}
 
-	case picker.SelectedMsg[files.Link]:
+	case picker.SelectedMsg[paths.Link]:
 		m.state = linkFixerView
 
 		m.linkfixer = m.linkfixer.Search(msg.Selected.FileName())
@@ -117,58 +116,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func updateFile(file files.File) {
-	osFile, err := os.Create(string(file.Path))
-	if err != nil {
-		panic(fmt.Errorf("Failed to open file: %v", err))
-	}
-
-	_, err = osFile.WriteString(file.Contents)
-	if err != nil {
-		panic(fmt.Errorf("Failed to update file: %v", err))
-	}
-
-	err = osFile.Close()
-	if err != nil {
-		panic(fmt.Errorf("Failed to close file: %v", err))
-	}
-}
-
-func readFile(config config.Config, path files.RelativePath) (files.File, []files.Link) {
-	buf, err := os.ReadFile(string(path))
-	if err != nil {
-		panic(err)
-	}
-
-	contents := string(buf)
-	linkRe := regexp.MustCompile(`\[.+?\]\(.+?\)`)
-	nameRe := regexp.MustCompile(`\[.+?\]`)
-	urlRe := regexp.MustCompile(`\(.+?\)`)
-
-	matches := linkRe.FindAllString(contents, -1)
-	links := []files.Link{}
-
-	for _, match := range matches {
-		namePart := nameRe.FindString(match)
-		urlPart := urlRe.FindString(match)
-
-		if namePart != "" && urlPart != "" {
-			name := namePart[1 : len(namePart)-1]
-			url := urlPart[1 : len(urlPart)-1]
-			status, resolved := files.ResolveLink(config, string(path), url)
-
-			links = append(links,
-				files.Link{Name: name, Url: url, Resolved: resolved, Status: status},
-			)
-		}
-
-	}
-
-	hasLinks := len(links) > 0
-
-	return files.File{Path: path, Contents: contents, HasLinks: hasLinks}, links
 }
 
 func (m Model) filePickerView() string {
@@ -224,17 +171,17 @@ func (m Model) View() string {
 	return "unexpected state"
 }
 
-func initialModel(config config.Config, f []files.RelativePath) Model {
+func initialModel(config config.Config, f []paths.RelativePath) Model {
 	return Model{
 		config:     config,
 		state:      filePickerView,
-		filepicker: picker.New[files.RelativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(f),
-		linkpicker: picker.New[files.Link]().Title("Edit Link").Accent(theme.ColorSecondary),
-		linkfixer:  picker.New[files.RelativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(f),
+		filepicker: picker.New[paths.RelativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(f),
+		linkpicker: picker.New[paths.Link]().Title("Edit Link").Accent(theme.ColorSecondary),
+		linkfixer:  picker.New[paths.RelativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(f),
 	}
 }
 
-func Run(config config.Config, f []files.RelativePath) {
+func Run(config config.Config, f []paths.RelativePath) {
 	m := initialModel(config, f)
 
 	p := tea.NewProgram(m)

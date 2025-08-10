@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	lg "github.com/charmbracelet/lipgloss"
@@ -35,9 +36,10 @@ type Link struct {
 }
 
 type File struct {
-	Path     RelativePath
-	Contents string
-	HasLinks bool
+	Path               RelativePath
+	Contents           string
+	HasLinks           bool
+	HasUnresolvedLinks bool
 }
 
 const resolveExtension = ".md"
@@ -62,6 +64,10 @@ func (l Link) Title() string {
 func (l Link) FileName() string {
 	parts := strings.Split(l.Url, "/")
 	return parts[len(parts)-1]
+}
+
+func (l Link) IsUnresolved() bool {
+	return l.Status == unresolved
 }
 
 func ResolveLink(config config.Config, relative string, url string) (linkStatus, RelativePath) {
@@ -116,4 +122,60 @@ func GetMarkdownFiles(config config.Config) []RelativePath {
 	)
 
 	return files
+}
+
+func UpdateFile(file File) {
+	osFile, err := os.Create(string(file.Path))
+	if err != nil {
+		panic(fmt.Errorf("Failed to open file: %v", err))
+	}
+
+	_, err = osFile.WriteString(file.Contents)
+	if err != nil {
+		panic(fmt.Errorf("Failed to update file: %v", err))
+	}
+
+	err = osFile.Close()
+	if err != nil {
+		panic(fmt.Errorf("Failed to close file: %v", err))
+	}
+}
+
+func ReadFile(config config.Config, path RelativePath) (File, []Link) {
+	buf, err := os.ReadFile(string(path))
+	if err != nil {
+		panic(err)
+	}
+
+	contents := string(buf)
+	linkRe := regexp.MustCompile(`(\s|^)\[.+?\]\(.+?\)`)
+	nameRe := regexp.MustCompile(`\[.+?\]`)
+	urlRe := regexp.MustCompile(`\(.+?\)`)
+
+	matches := linkRe.FindAllString(contents, -1)
+	links := []Link{}
+
+	hasLinks := len(links) > 0
+	hasUnresolvedLinks := false
+
+	for _, match := range matches {
+		namePart := nameRe.FindString(match)
+		urlPart := urlRe.FindString(match)
+
+		if namePart != "" && urlPart != "" {
+			name := namePart[1 : len(namePart)-1]
+			url := urlPart[1 : len(urlPart)-1]
+			status, resolved := ResolveLink(config, string(path), url)
+
+			link := Link{Name: name, Url: url, Resolved: resolved, Status: status}
+
+			links = append(links, link)
+			if link.IsUnresolved() {
+				hasUnresolvedLinks = true
+			}
+		}
+
+	}
+
+	return File{Path: path, Contents: contents, HasLinks: hasLinks, HasUnresolvedLinks: hasUnresolvedLinks}, links
 }

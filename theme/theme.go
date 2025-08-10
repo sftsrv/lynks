@@ -17,3 +17,5 @@ var Heading = lg.NewStyle().Bold(true).Foreground(ColorWhite).PaddingLeft(1).Pad
 var Primary = lg.NewStyle().Foreground(ColorPrimary)
 var Faded = lg.NewStyle().Foreground(ColorFaded)
 var Active = lg.NewStyle().Foreground(ColorPrimary)
+var Warn = lg.NewStyle().Foreground(ColorWarn)
+var Alert = lg.NewStyle().Bold(true).PaddingLeft(1).PaddingRight(1).Background(ColorError)
