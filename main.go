@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sftsrv/lynks/cli"
@@ -12,20 +11,15 @@ import (
 
 func main() {
 	configPath := "lynks.config.json"
-	config, configErr := config.Load(configPath)
-
-	fmt.Printf("config %v", config)
-
-	if configErr != nil {
-		panic(configErr)
-	}
+	config := config.Load(configPath)
 
 	files := files.GetMarkdownFiles(config)
 
 	if len(os.Args) < 2 {
 		ui.Run(config, files)
+		return
 	}
-	
+
 	switch os.Args[1] {
 	case "lint":
 		cli.Lint(config, files)

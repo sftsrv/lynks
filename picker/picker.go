@@ -22,9 +22,8 @@ type Model[I Item] struct {
 
 func New[I Item]() Model[I] {
 	return Model[I]{
-		searching: true,
-		accent:    theme.ColorPrimary,
-		count:     5,
+		accent: theme.ColorPrimary,
+		count:  5,
 	}
 }
 
@@ -203,7 +202,7 @@ func (m Model[I]) Update(msg tea.Msg) (Model[I], tea.Cmd) {
 				m = m.cursorDown()
 
 			case "esc":
-				m = m.clearSearch().applyFilter()
+				m.searching = false
 
 			case "enter":
 				return m, m.selectedMsg()
@@ -238,7 +237,7 @@ func (m Model[I]) Update(msg tea.Msg) (Model[I], tea.Cmd) {
 				return m, m.selectedMsg()
 
 			case "esc":
-				m = m.clearSearch().applyFilter()
+				m.searching = false
 
 			case "/":
 				m.searching = true

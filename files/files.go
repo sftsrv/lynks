@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -42,23 +43,14 @@ type File struct {
 	HasUnresolvedLinks bool
 }
 
-const resolveExtension = ".md"
-
-func (l Link) color() lg.Color {
-	switch l.Status {
-	case remote:
-		return theme.ColorSecondary
-	case resolved:
-		return theme.ColorSecondary
-	case unresolved:
-		return theme.ColorWarn
-	}
-
-	return theme.ColorError
+var color = map[linkStatus]lg.Color{
+	remote:     theme.ColorSecondary,
+	resolved:   theme.ColorSecondary,
+	unresolved: theme.ColorWarn,
 }
 
 func (l Link) Title() string {
-	return lg.NewStyle().Foreground(l.color()).Render(lg.NewStyle().Bold(true).Render(l.Name) + " " + l.Url + "->" + string(l.Resolved))
+	return lg.NewStyle().Foreground(color[l.Status]).Render(lg.NewStyle().Bold(true).Render(l.Name) + " " + l.Url + "->" + string(l.Resolved))
 }
 
 func (l Link) FileName() string {
@@ -75,7 +67,7 @@ func ResolveLink(config config.Config, relative string, url string) (linkStatus,
 		return remote, RelativePath(url)
 	}
 
-	p := url + resolveExtension
+	p := url + mdExtension
 
 	if strings.HasPrefix(p, "../") {
 		p = filepath.Join(filepath.Dir(relative), p)
@@ -95,12 +87,30 @@ func ResolveLink(config config.Config, relative string, url string) (linkStatus,
 	return resolved, RelativePath(p)
 }
 
-func FixLink(config config.Config, file File, link Link, path RelativePath) File {
+func FixLink(config config.Config, file File, link Link, p RelativePath) File {
 	oldLink := fmt.Sprintf("[%s](%s)", link.Name, link.Url)
-	newLink := fmt.Sprintf("[%s](%s)", link.Name, strings.TrimSuffix(config.AddAlias(string(path)), resolveExtension))
+
+	strategy := resolutionStrategies[config.Resolution.Strategy]
+
+	newPath := strategy.toMarkdownLink(config.Resolution, string(file.Path), string(p), config.AddAlias(string(p)))
+
+	newLink := fmt.Sprintf("[%s](%s)", link.Name, newPath)
 
 	file.Contents = strings.Replace(file.Contents, oldLink, newLink, 1)
 	return file
+}
+
+func isIgnoredPath(config config.Config, p string) bool {
+	for _, ignore := range config.Ignore {
+		fullPath := path.Join(config.Root, p)
+		fullIgnore := path.Join(config.Root, ignore)
+
+		if strings.HasPrefix(fullPath, fullIgnore) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func GetMarkdownFiles(config config.Config) []RelativePath {
@@ -113,7 +123,11 @@ func GetMarkdownFiles(config config.Config) []RelativePath {
 				return err
 			}
 
-			if !d.IsDir() && strings.HasSuffix(s, resolveExtension) {
+			if isIgnoredPath(config, s) {
+				return nil
+			}
+
+			if !d.IsDir() && strings.HasSuffix(s, mdExtension) {
 				files = append(files, RelativePath(s))
 			}
 
@@ -124,7 +138,7 @@ func GetMarkdownFiles(config config.Config) []RelativePath {
 	return files
 }
 
-func UpdateFile(file File) {
+func UpdateFile(resolution config.Resolution, file File) {
 	osFile, err := os.Create(string(file.Path))
 	if err != nil {
 		panic(fmt.Errorf("Failed to open file: %v", err))
@@ -155,7 +169,6 @@ func ReadFile(config config.Config, path RelativePath) (File, []Link) {
 	matches := linkRe.FindAllString(contents, -1)
 	links := []Link{}
 
-	hasLinks := len(links) > 0
 	hasUnresolvedLinks := false
 
 	for _, match := range matches {
@@ -174,8 +187,9 @@ func ReadFile(config config.Config, path RelativePath) (File, []Link) {
 				hasUnresolvedLinks = true
 			}
 		}
-
 	}
+
+	hasLinks := len(links) > 0
 
 	return File{Path: path, Contents: contents, HasLinks: hasLinks, HasUnresolvedLinks: hasUnresolvedLinks}, links
 }

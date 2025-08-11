@@ -16,7 +16,6 @@ func Lint(config config.Config, paths []files.RelativePath) {
 	linkCount := 0
 	unresolvedCount := 0
 
-	hasUnresolved := false
 	for _, path := range paths {
 		file, links := files.ReadFile(config, path)
 		linkCount += len(links)
@@ -24,8 +23,6 @@ func Lint(config config.Config, paths []files.RelativePath) {
 		if !file.HasUnresolvedLinks {
 			continue
 		}
-
-		hasUnresolved = true
 
 		fmt.Println(theme.Heading.Render(string(file.Path)))
 		fmt.Println(theme.Faded.Render("Unresolved links:"))
@@ -38,7 +35,7 @@ func Lint(config config.Config, paths []files.RelativePath) {
 	}
 
 	result := theme.Heading.Render("No unresolved links!")
-	if hasUnresolved {
+	if unresolvedCount > 0 {
 		result = theme.Alert.Render("Found unresolved links")
 	}
 
@@ -53,7 +50,7 @@ func Lint(config config.Config, paths []files.RelativePath) {
 			),
 		))
 
-	if hasUnresolved {
+	if unresolvedCount > 0 {
 		os.Exit(1)
 	}
 

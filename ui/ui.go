@@ -69,7 +69,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case linkFixerView:
 			m.state = linkPickerView
 			updated := paths.FixLink(m.config, m.file, m.link, msg.Selected)
-			paths.UpdateFile(updated)
+			paths.UpdateFile(m.config.Resolution, updated)
 			file, links := paths.ReadFile(m.config, updated.Path)
 
 			m.file = file
@@ -123,7 +123,6 @@ func (m Model) filePickerView() string {
 }
 
 func (m Model) linkPickerView() string {
-
 	selected := m.file.Path
 	header := theme.Heading.Render("Links for") + theme.Primary.MarginLeft(1).Render(string(selected))
 
@@ -177,7 +176,7 @@ func initialModel(config config.Config, f []paths.RelativePath) Model {
 		state:      filePickerView,
 		filepicker: picker.New[paths.RelativePath]().Title("File to check").Accent(theme.ColorPrimary).Items(f),
 		linkpicker: picker.New[paths.Link]().Title("Edit Link").Accent(theme.ColorSecondary),
-		linkfixer:  picker.New[paths.RelativePath]().Title("Fix link").Accent(theme.ColorWarn).Items(f),
+		linkfixer:  picker.New[paths.RelativePath]().Title("Fix link").Accent(theme.ColorSecondary).Items(f),
 	}
 }
 

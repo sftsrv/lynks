@@ -9,9 +9,23 @@ import (
 
 type aliases = map[string]string
 
+type ResolutionStrategy string
+
+const (
+	RootResolutionStrategy     ResolutionStrategy = "root"
+	RelativeResolutionStrategy ResolutionStrategy = "relative"
+)
+
+type Resolution struct {
+	Strategy      ResolutionStrategy `json:"strategy"`
+	KeepExtension bool               `json:"keepExtension"`
+}
+
 type Config struct {
-	Root    string  `json:"root"`
-	Aliases aliases `json:"aliases"`
+	Root       string     `json:"root"`
+	Resolution Resolution `json:"resolution"`
+	Ignore     []string   `json:"ignore"`
+	Aliases    aliases    `json:"aliases"`
 }
 
 func (c Config) AddAlias(link string) string {
@@ -36,18 +50,28 @@ func (c Config) RemoveAlias(link string) string {
 	return link
 }
 
-func Load(path string) (Config, error) {
-	config := Config{}
-	file, fileErr := os.ReadFile(path)
+func defaultConfig() Config {
+	return Config{
+		Root: "./",
+		Resolution: Resolution{
+			Strategy:      RelativeResolutionStrategy,
+			KeepExtension: true,
+		},
+	}
+}
 
+func Load(path string) Config {
+	config := defaultConfig()
+
+	file, fileErr := os.ReadFile(path)
 	if fileErr != nil {
-		return config, fileErr
+		return config
 	}
 
 	jsonErr := json.Unmarshal(file, &config)
 	if jsonErr != nil {
-		return config, jsonErr
+		return config
 	}
 
-	return config, nil
+	return config
 }
