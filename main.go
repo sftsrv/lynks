@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-
 	configPath := "lynks.config.json"
 	config, configErr := config.Load(configPath)
 
@@ -23,11 +22,12 @@ func main() {
 
 	files := files.GetMarkdownFiles(config)
 
+	if len(os.Args) < 2 {
+		ui.Run(config, files)
+	}
+	
 	switch os.Args[1] {
 	case "lint":
 		cli.Lint(config, files)
-
-	default:
-		ui.Run(config, files)
 	}
 }
