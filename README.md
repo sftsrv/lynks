@@ -29,8 +29,13 @@ Create a `lynks.config.json` file from the directory you want to run the command
 {
   // root folder from which pages should be resolved
   "root": "./src/docs",
+  // if not provided will defult to `relative`
+  "resolution": {
+    "strategy": "root", // options are `root | relative`
+    "keepExtension": false
+  },
   "aliases": {
-    // aliases resolve relative to the "root"
+    // aliases resolve relative to the `root`
     // the key can be any value that you use within pages for linking
     "@api": "./generated/api"
   }
@@ -62,7 +67,6 @@ lynks lint
 Some things that I still want to do before considering this project complete:
 
 - [ ] Add tests for like everything
-- [ ] Link management strategies
 - [ ] Flags for more specific behavior like:
   - Interactive "fix" mode
   - Better control of linting
@@ -70,7 +74,8 @@ Some things that I still want to do before considering this project complete:
     - Only show links with errors
 - [ ] Help, informative errors, etc.
 - [ ] Management of image and mdx links
-- [ ] Ability to output relative links
 - [ ] Support for index pages
 - [ ] Imporove overall UX
 - [ ] Support links with hashes
+- [ ] Make resolution more strict
+  - e.g. will not accept relative links if resolution mode is root
