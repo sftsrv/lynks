@@ -61,6 +61,7 @@ lynks lint
 
 Some things that I still want to do before considering this project complete:
 
+- [ ] Add tests for like everything
 - [ ] Link management strategies
 - [ ] Flags for more specific behavior like:
   - Interactive "fix" mode
