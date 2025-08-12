@@ -67,7 +67,10 @@ func ResolveLink(config config.Config, relative string, url string) (linkStatus,
 		return remote, RelativePath(url)
 	}
 
-	p := url + mdExtension
+	p := url
+	if !strings.HasSuffix(p, mdExtension) {
+		p = url + mdExtension
+	}
 
 	if strings.HasPrefix(p, "../") {
 		p = filepath.Join(filepath.Dir(relative), p)
