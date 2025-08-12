@@ -67,6 +67,7 @@ lynks lint
 Some things that I still want to do before considering this project complete:
 
 - [ ] Add tests for like everything
+- [ ] Respect resolution strategy when reading files as well
 - [ ] Flags for more specific behavior like:
   - Interactive "fix" mode
   - Better control of linting
