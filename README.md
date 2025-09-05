@@ -66,6 +66,7 @@ lynks lint
 
 Some things that I still want to do before considering this project complete:
 
+- [ ] Add filter to view only broken links
 - [ ] Add tests for like everything
 - [ ] Respect resolution strategy when reading files as well
 - [ ] Flags for more specific behavior like:
