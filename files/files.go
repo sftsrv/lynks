@@ -2,6 +2,7 @@ package files
 
 import (
 	"fmt"
+	c "image/color"
 	"io/fs"
 	"os"
 	"path"
@@ -9,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	lg "github.com/charmbracelet/lipgloss"
+	lg "charm.land/lipgloss/v2"
 	"github.com/sftsrv/lynks/config"
 	"github.com/sftsrv/lynks/theme"
 )
@@ -43,7 +44,7 @@ type File struct {
 	HasUnresolvedLinks bool
 }
 
-var color = map[linkStatus]lg.Color{
+var color = map[linkStatus]c.Color{
 	remote:     theme.ColorSecondary,
 	resolved:   theme.ColorSecondary,
 	unresolved: theme.ColorWarn,

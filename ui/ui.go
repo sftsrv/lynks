@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
-	lg "github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	lg "charm.land/lipgloss/v2"
 	"github.com/sftsrv/lynks/config"
 	paths "github.com/sftsrv/lynks/files"
 	"github.com/sftsrv/lynks/picker"
@@ -155,19 +155,19 @@ func (m Model) linkFixerView() string {
 	)
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	switch m.state {
 	case filePickerView:
-		return m.filePickerView()
+		return tea.NewView(m.filePickerView())
 
 	case linkPickerView:
-		return m.linkPickerView()
+		return tea.NewView(m.linkPickerView())
 
 	case linkFixerView:
-		return m.linkFixerView()
+		return tea.NewView(m.linkFixerView())
 	}
 
-	return "unexpected state"
+	return tea.NewView("unexpected state")
 }
 
 func initialModel(config config.Config, f []paths.RelativePath) Model {

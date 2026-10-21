@@ -8,7 +8,7 @@ import (
 	"github.com/sftsrv/lynks/files"
 	"github.com/sftsrv/lynks/theme"
 
-	lg "github.com/charmbracelet/lipgloss"
+	lg "charm.land/lipgloss/v2"
 )
 
 func Lint(config config.Config, paths []files.RelativePath) {
